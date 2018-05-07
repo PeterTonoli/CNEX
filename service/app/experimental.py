@@ -28,6 +28,34 @@ from Entity import Entity
 
 from config import Config
 
+@view_config(route_name='generate_gml', request_method='GET', renderer='ujson')
+def generate_gml(request):
+    db = mdb(request)
+    site = request.matchdict['code']
+    graph_type = 'byEntity'
+    claims, site_data = verify_access(request, site=site)
+
+    doc = db.network.find_one({'site': site, 'graph_type': graph_type})
+    # if there a graph in Mongo already?
+    if doc is not None:
+        graph_data = doc['graph_data']
+        doc = db.network_progress.remove({'site': site})
+
+        #       # Convert from the directed graph in Mongo, to undirected, for find_cliques, as find_cliques is
+        # incompatible with directed graphs
+        #graph_data = json_graph.node_link_graph(graph_data, directed=False, multigraph=False)
+        G = nx.readwrite.json_graph.node_link_graph(doc)
+        gml_data = nx.generate_graphml(G)
+        nx.write_gexf(G,"/tmp/x.gml")
+
+        return {'gml data': gml_data}
+        # return { 'total': doc['total'], 'processed': doc['processed'] }
+    else:
+        # no graph in Mongo, lets generate one
+        doc = db.network_progress.find_one({'site': site})
+        return {'total': doc['total'], 'processed': doc['processed']}
+
+
 @view_config(route_name='clique_status', request_method='GET', renderer='ujson')
 def clique_status(request):
     db = mdb(request)
@@ -36,7 +64,7 @@ def clique_status(request):
     claims, site_data = verify_access(request, site=site)
 
     doc = db.network.find_one({ 'site': site, 'graph_type': graph_type })
-    # if there a graph in Mongo already?
+    # is there a graph in Mongo already?
     if doc is not None:
         graph_data = doc['graph_data']
         doc = db.network_progress.remove({ 'site': site })
@@ -47,7 +75,7 @@ def clique_status(request):
         cliques = nx.find_cliques(clique_data)
 
         # Find cliques with 3 or more entities, discard the rest
-        cliques3 = [clq for clq in cliques if len(clq) >=3]
+        cliques3 = [clq for clq in cliques if len(clq) >= 5]
         return { 'total': None, 'processed': None, 'cliques': cliques3 }
         #return { 'total': doc['total'], 'processed': doc['processed'] }
     else:
